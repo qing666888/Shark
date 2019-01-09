@@ -24,11 +24,16 @@
 extern "C" {
 #endif	/* __cplusplus */
 
-#ifndef RvaToVa
-#define RvaToVa(p) ((PVOID)((PCHAR)(p) + *(PLONG)(p) + sizeof(LONG)))
-#endif // !RvaToVa
+#ifndef __RVA_TO_VA
+#define __RVA_TO_VA(p) ((PVOID)((PCHAR)(p) + *(PLONG)(p) + sizeof(LONG)))
+#endif // !__RVA_TO_VA
 
 #define JUMP_SELF 0x0000feebUI32
+
+#ifndef _WIN64
+#define HOT_PATCH_HEADER "\x8b\xff"
+#define HOT_PATCH_HEADER_LENGTH (sizeof(HOT_PATCH_HEADER) - 1)
+#endif // !_WIN64
 
 #define JUMP_CODE32 "\x68\xff\xff\xff\xff\xc3"
 #define JUMP_CODE64 "\xff\x25\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff"
@@ -113,6 +118,14 @@ extern "C" {
         NTAPI
         BuildJumpCode(
             __in PVOID Function,
+            __inout PVOID * NewAddress
+        );
+
+    NTSTATUS
+        NTAPI
+        SetVaildJumpFunction(
+            __in PVOID Function,
+            __in PVOID ImageBase,
             __inout PVOID * NewAddress
         );
 

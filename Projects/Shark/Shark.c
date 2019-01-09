@@ -24,6 +24,7 @@
 #include "Jump.h"
 #include "Reload.h"
 #include "PatchGuard.h"
+#include "Space.h"
 
 VOID
 NTAPI
@@ -89,7 +90,7 @@ DriverEntry(
         FALSE,
         &DeviceObject);
 
-    if ((RTL_SOFT_ASSERT(NT_SUCCESS(Status)))) {
+    if (NT_SUCCESS(Status)) {
         DriverObject->MajorFunction[IRP_MJ_CREATE] = (PDRIVER_DISPATCH)DeviceCreate;
         DriverObject->MajorFunction[IRP_MJ_CLOSE] = (PDRIVER_DISPATCH)DeviceClose;
         DriverObject->MajorFunction[IRP_MJ_WRITE] = (PDRIVER_DISPATCH)DeviceWrite;
@@ -100,14 +101,12 @@ DriverEntry(
 
         Status = IoCreateSymbolicLink(&SymbolicLinkName, &DeviceName);
 
-        if ((RTL_SOFT_ASSERT(NT_SUCCESS(Status)))) {
+        if (TRACE(Status)) {
             DriverObject->DriverUnload = (PDRIVER_UNLOAD)DriverUnload;
 
-            InitializeLoadedModuleList(NULL);
-
-#ifndef VMP
-            DbgPrint("Shark - load\n");
-#endif // !VMP
+#ifndef PUBLIC
+            DbgPrint("[Shark] load\n");
+#endif // !PUBLIC
         }
         else {
             IoDeleteDevice(DeviceObject);
@@ -226,19 +225,28 @@ DeviceControl(
     case 0: {
         PPATCHGUARD_BLOCK PatchGuardBlock = NULL;
 
-        PatchGuardBlock = ExAllocatePool(
+        ReloaderBlock = ExAllocatePool(
             NonPagedPool,
-            sizeof(PATCHGUARD_BLOCK));
+            sizeof(RELOADER_PARAMETER_BLOCK) + sizeof(PATCHGUARD_BLOCK));
 
-        if (NULL != PatchGuardBlock) {
-            RtlZeroMemory(PatchGuardBlock, sizeof(PATCHGUARD_BLOCK));
+        if (NULL != ReloaderBlock) {
+            RtlZeroMemory(
+                ReloaderBlock,
+                sizeof(RELOADER_PARAMETER_BLOCK) + sizeof(PATCHGUARD_BLOCK));
 
-#ifdef _WIN64
+            PsGetVersion(NULL, NULL, &ReloaderBlock->BuildNumber, NULL);
+
+            InitializeLoadedModuleList(ReloaderBlock);
+            InitializeSystemSpace(ReloaderBlock);
+
+            PatchGuardBlock =
+                (PCHAR)ReloaderBlock + sizeof(RELOADER_PARAMETER_BLOCK);
+
+            ReloaderBlock->DeployPatchGuard = TRUE;
+            PatchGuardBlock->BuildNumber = ReloaderBlock->BuildNumber;
+            PatchGuardBlock->KernelBase = (PVOID)ReloaderBlock->DebuggerDataBlock.KernBase;
+
             DisablePatchGuard(PatchGuardBlock);
-#endif // _WIN64
-
-            // free must after PatchGuard context cleared
-            // ExFreePool(PatchGuardBlock);
         }
 
         Irp->IoStatus.Information = 0;
